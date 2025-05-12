@@ -199,7 +199,6 @@
     <p>Nenhuma tarefa ainda.</p>
   {/if}
 </main>
-
 <style>
  :global(body) {
     background-color: var(--background-color, #791717);
@@ -212,12 +211,11 @@
     margin: 2rem auto;
     padding: 2rem;
     font-family: 'Roboto', sans-serif;
-    background-color: #8a1b1b;
+    background-color: #8a1d1d;
     border-radius: 12px;
     box-shadow: 0 4px 10px rgb(240, 65, 65);
-    
+  
   }
-
   h1 {
     color: #ffffff;
     text-align: center;
