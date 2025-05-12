@@ -19,107 +19,113 @@
 
   const API_URL: string = 'http://localhost:3001/api/tasks'; // URL do seu backend
 
-  //busca todas as tarefas
-  async function fetchTasks(): Promise<void> {
+  // Função helper para realizar requisições à API
+  async function makeApiRequest<T>(
+    url: string,
+    options: RequestInit = {},
+    successCallback: (data: T) => void,
+    baseErrorMessage: string
+  ): Promise<void> {
     isLoading = true;
     error = null;
     try {
-      const response = await fetch(API_URL);
+      const response = await fetch(url, options);
       if (!response.ok) {
-        throw new Error(`Erro HTTP: ${response.status}`);
+        let errorDetail = `Erro HTTP: ${response.status}`;
+        try {
+          const errorData = await response.json();
+          errorDetail = errorData.message || errorData.error || errorDetail;
+        } catch (e) {
+          // Não conseguiu parsear o JSON do erro, usa o status HTTP
+        }
+        throw new Error(errorDetail);
       }
-      tasks = await response.json();
-    } catch (e) {
-      console.error('Falha ao buscar tarefas:', e);
-      error = 'Não foi possível carregar as tarefas.';
+
+      // Para DELETE ou respostas sem conteúdo (204 No Content)
+      if (options.method === 'DELETE' || response.status === 204) {
+        successCallback(null as T); // Ou um valor apropriado se T não puder ser null
+      } else {
+        const data: T = await response.json();
+        successCallback(data);
+      }
+    } catch (e: any) {
+      console.error(`${baseErrorMessage}:`, e);
+      error = `${baseErrorMessage}. ${e.message || 'Ocorreu um erro desconhecido.'}`;
     } finally {
       isLoading = false;
     }
+  }
+
+  //busca todas as tarefas
+  async function fetchTasks(): Promise<void> {
+    await makeApiRequest<Task[]>(
+      API_URL,
+      {},
+      (data) => { tasks = data; },
+      'Falha ao buscar tarefas'
+    );
   }
 
   //adiciona uma nova tarefa
   async function addTask(): Promise<void> {
     if (!newTaskDescription.trim()) return;
-    isLoading = true;
-    error = null;
-    try {
-      const response = await fetch(API_URL, {
+    await makeApiRequest<Task>(
+      API_URL,
+      {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ description: newTaskDescription }),
-      });
-      if (!response.ok) {
-        throw new Error(`Erro HTTP: ${response.status}`);
-      }
-      const addedTask: Task = await response.json();
-      tasks = [addedTask, ...tasks]; 
-      newTaskDescription = '';
-    } catch (e) {
-      console.error('Falha ao adicionar tarefa:', e);
-      error = 'Não foi possível adicionar a tarefa.';
-    } finally {
-      isLoading = false;
-    }
+      },
+      (addedTask) => {
+        tasks = [addedTask, ...tasks];
+        newTaskDescription = '';
+      },
+      'Falha ao adicionar tarefa'
+    );
   }
 
   //muda o estado de concluído de uma tarefa
   async function toggleTaskCompleted(task: Task): Promise<void> {
-    isLoading = true;
-    error = null;
-    try {
-      const response = await fetch(`${API_URL}/${task.id}`, {
+    await makeApiRequest<Task>(
+      `${API_URL}/${task.id}`,
+      {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ completed: !task.completed }),
-      });
-      if (!response.ok) {
-        throw new Error(`Erro HTTP: ${response.status}`);
-      }
-      const updatedTask: Task = await response.json();
-      tasks = tasks.map(t => (t.id === updatedTask.id ? updatedTask : t));
-    } catch (e) {
-      console.error('Falha ao atualizar tarefa:', e);
-      error = 'Não foi possível atualizar a tarefa.';
-    } finally {
-      isLoading = false;
-    }
+      },
+      (updatedTask) => {
+        tasks = tasks.map(t => (t.id === updatedTask.id ? updatedTask : t));
+      },
+      'Falha ao atualizar tarefa'
+    );
   }
 
   //inicia a edição de uma tarefa
   function startEditTask(task: Task): void {
+    // Se já estiver editando outra tarefa, cancela a edição anterior
+    if (editingTaskId !== null && editingTaskId !== task.id) {
+      cancelEdit();
+    }
     editingTaskId = task.id;
     editingTaskDescription = task.description;
   }
 
   //salva a tarefa editada
-  async function saveEditedTask(task: Task): Promise<void> {
+  async function saveEditedTask(originalTask: Task): Promise<void> {
     if (!editingTaskDescription.trim()) return;
-    isLoading = true;
-    error = null;
-    try {
-      const response = await fetch(`${API_URL}/${task.id}`, {
+    await makeApiRequest<Task>(
+      `${API_URL}/${originalTask.id}`,
+      {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ description: editingTaskDescription, completed: task.completed }),
-      });
-      if (!response.ok) {
-        throw new Error(`Erro HTTP: ${response.status}`);
-      }
-      const updatedTask: Task = await response.json();
-      tasks = tasks.map(t => (t.id === updatedTask.id ? updatedTask : t));
-      editingTaskId = null;
-    } catch (e) {
-      console.error('Falha ao salvar tarefa editada:', e);
-      error = 'Não foi possível salvar a tarefa editada.';
-    } finally {
-      isLoading = false;
-    }
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ description: editingTaskDescription, completed: originalTask.completed }),
+      },
+      (updatedTask) => {
+        tasks = tasks.map(t => (t.id === updatedTask.id ? updatedTask : t));
+        cancelEdit(); // Limpa o estado de edição
+      },
+      'Falha ao salvar tarefa editada'
+    );
   }
 
   //cancela a edição
@@ -130,22 +136,16 @@
 
   //deleta uma tarefa
   async function deleteTask(taskId: number): Promise<void> {
-    isLoading = true;
-    error = null;
-    try {
-      const response = await fetch(`${API_URL}/${taskId}`, {
+    await makeApiRequest<null>( // DELETE pode não retornar corpo
+      `${API_URL}/${taskId}`,
+      {
         method: 'DELETE',
-      });
-      if (!response.ok) {
-        throw new Error(`Erro HTTP: ${response.status}`);
-      }
-      tasks = tasks.filter(t => t.id !== taskId);
-    } catch (e) {
-      console.error('Falha ao deletar tarefa:', e);
-      error = 'Não foi possível deletar a tarefa.';
-    } finally {
-      isLoading = false;
-    }
+      },
+      () => {
+        tasks = tasks.filter(t => t.id !== taskId);
+      },
+      'Falha ao deletar tarefa'
+    );
   }
 
   //Carrega as tarefas ao montar o componente
@@ -165,15 +165,15 @@
     <button type="submit" disabled={isLoading || !newTaskDescription.trim()}>Adicionar</button>
   </form>
 
-  {#if isLoading && tasks.length === 0}
-    <p>Carregando as tarefas.</p>
+  {#if isLoading && tasks.length === 0 && !error}
+    <p class="loading-message">Carregando as tarefas...</p>
   {/if}
 
   {#if error}
     <p class="error-message">{error}</p>
   {/if}
 
-  <ul class="task-list">
+  <ul class="task-list" class:loading={isLoading && tasks.length > 0}>
     {#each tasks as task (task.id)}
       <li class:completed={task.completed}>
         {#if editingTaskId === task.id}
@@ -195,8 +195,8 @@
     {/each}
   </ul>
 
-  {#if !isLoading && tasks.length === 0 && !error}
-    <p>Nenhuma tarefa ainda.</p>
+  {#if !isLoading && tasks.length === 0 && !error && !editingTaskId}
+    <p class="empty-list-message">Nenhuma tarefa ainda. Adicione uma acima!</p>
   {/if}
 </main>
 <style>
@@ -238,12 +238,14 @@
     font-size: 1rem;
     transition: border-color 0.3s;
     
+    
   }
 
   .add-task-form input[type="text"]:focus {
     border-color: #e25151;
     outline: none;
     box-shadow: 0 4px 10px rgb(240, 65, 65);
+    
   }
 
   .add-task-form button {
@@ -378,4 +380,18 @@
     border: 1px solid #e74c3c;
     border-radius: 8px;
   }
+
+  .loading-message, .empty-list-message {
+    text-align: center;
+    padding: 1rem;
+    color: #f0f0f0;
+    font-style: italic;
+  }
+
+ 
+  .task-list.loading {
+    opacity: 0.6;
+    position: relative; 
+  }
+ 
 </style>

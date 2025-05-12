@@ -2,50 +2,49 @@ const express = require('express');
 const cors = require('cors');
 require('dotenv').config();
 const pool = require('./db');
-const fs = require('fs').promises; // Para ler arquivos de forma assíncrona
-const mysql = require('mysql2/promise'); // Importar para criar conexão temporária
-const path = require('path'); // Para construir caminhos de arquivo de forma segura
+const fs = require('fs').promises; // Módulo para operações de arquivo assíncronas
+const mysql = require('mysql2/promise'); // Cliente MySQL para conexões diretas
+const path = require('path'); // Utilitário para manipulação de caminhos de arquivo
 
 const app = express();
 const port = process.env.PORT || 3001;
 
-// Função para inicializar o banco de dados
+// Procedimento para configurar o banco de dados na inicialização
 async function initializeDatabase() {
   let tempConnection;
   try {
-    // Etapa 1: Garantir que o banco de dados exista usando uma conexão temporária
-    // que não especifica um 'database' na sua configuração inicial.
-    console.log(`Tentando garantir a existência do banco de dados '${process.env.DB_NAME}'...`);
+    // Passo 1: Assegurar a existência do banco de dados.
+    // Uma conexão temporária é usada, sem especificar um banco de dados, para criar o DB se necessário.
+    console.log(`Verificando/criando o banco de dados '${process.env.DB_NAME}'...`);
     tempConnection = await mysql.createConnection({
       host: process.env.DB_HOST,
       user: process.env.DB_USER,
       password: process.env.DB_PASSWORD,
-      // NENHUMA propriedade 'database' aqui, para conectar ao servidor MySQL em geral
+      // A propriedade 'database' é omitida para permitir a conexão ao servidor MySQL antes da criação do DB.
     });
     await tempConnection.query(`CREATE DATABASE IF NOT EXISTS \`${process.env.DB_NAME}\``);
-    console.log(`Banco de dados '${process.env.DB_NAME}' verificado/criado com sucesso.`);
-    await tempConnection.end(); // Fechar a conexão temporária
+    console.log(`O banco de dados '${process.env.DB_NAME}' está pronto.`);
+    await tempConnection.end(); // Encerra a conexão temporária
 
-    // Etapa 2: Agora que o banco de dados existe, podemos usar o pool principal
-    // (que é configurado em db.js para usar DB_NAME) para aplicar o restante do schema.
+    // Passo 2: Com o banco de dados garantido, o schema é aplicado usando o pool de conexões principal.
+    // O pool (definido em db.js) já está configurado para usar o DB_NAME.
     const schemaPath = path.join(__dirname, '..', 'mysql', 'schema.sql');
     const sql = await fs.readFile(schemaPath, 'utf-8');
 
-    // Divide os comandos SQL. Simples para este schema, pode precisar de mais robustez para SQL complexo.
+    // Separa os comandos SQL do arquivo. Adequado para schemas simples; SQL mais complexo pode exigir um parser.
     const commands = sql.split(';').map(cmd => cmd.trim()).filter(cmd => cmd.length > 0);
 
-    // Obtém uma conexão do pool principal. Agora deve funcionar, pois o DB_NAME existe.
+    // Adquire uma conexão do pool. Esta operação deve ser bem-sucedida, pois o DB_NAME já existe.
     const poolConnection = await pool.getConnection();
-    console.log(`Conectado ao banco de dados '${process.env.DB_NAME}' via pool para aplicar o schema.`);
+    console.log(`Conexão estabelecida com '${process.env.DB_NAME}' via pool para aplicação do schema.`);
 
     for (const command of commands) {
-      // O comando CREATE DATABASE IF NOT EXISTS é seguro para ser executado novamente.
-      // O comando USE DB_NAME também é seguro; a conexão do pool já está nesse contexto.
+      // Comandos como CREATE DATABASE IF NOT EXISTS e USE DB_NAME são idempotentes ou já contextuais à conexão do pool.
       await poolConnection.query(command);
-      console.log(`Executado do schema.sql: ${command.substring(0, 60)}...`);
+      console.log(`Comando do schema.sql executado: ${command.substring(0, 60)}...`);
     }
     poolConnection.release();
-    console.log('Schema do arquivo bancodedados/schema.sql aplicado/verificado com sucesso!');
+    console.log('Schema do arquivo (mysql/schema.sql) aplicado/verificado com êxito!');
   } catch (error) {
     console.error('Erro ao inicializar o schema do banco de dados:', error);
     if (tempConnection) { // Garante que a conexão temporária seja fechada em caso de erro
@@ -53,59 +52,58 @@ async function initializeDatabase() {
     }
     // Decide se quer parar a aplicação ou continuar mesmo com o erro
     // process.exit(1); // Descomente para parar a aplicação se o DB não puder ser inicializado
+    // process.exit(1); // Avalie se a aplicação deve ser interrompida em caso de falha na inicialização do DB.
   }
 }
 
 // Middlewares
 app.use(cors({
-  origin: 'http://localhost:5173' // Permite requisições do frontend Svelte (servidor de desenvolvimento Vite)
+  origin: 'http://localhost:5173' // Configura CORS para permitir requisições do frontend Svelte (Vite dev server)
 }));
-app.use(express.json()); // Para parsear JSON no corpo das requisições
+app.use(express.json()); // Habilita o parsing de JSON no corpo das requisições
 
 // Rotas da API
 
-// Rota para LISTAR todas as tarefas
+// Endpoint para OBTER todas as tarefas
 app.get('/api/tasks', async (req, res) => {
   try {
     const [rows] = await pool.query('SELECT * FROM tarefas ORDER BY created_at DESC');
     res.json(rows);
   } catch (error) {
-    console.error('Falha ao buscar tarefas:', error);
-    res.status(500).json({ error: 'Erro interno do servidor' });
+    console.error('Não foi possível buscar as tarefas:', error);
+    res.status(500).json({ message: 'Ocorreu um erro no servidor ao buscar tarefas.' });
   }
 });
 
-// Criar uma nova tarefa
-// Rota para CRIAR uma nova tarefa
+// Endpoint para ADICIONAR uma nova tarefa
 app.post('/api/tasks', async (req, res) => {
   const { description } = req.body;
   if (!description) {
-    return res.status(400).json({ error: 'A descrição é obrigatória' });
+    return res.status(400).json({ message: 'O campo "description" é mandatório.' });
   }
   try {
     const [result] = await pool.query('INSERT INTO tarefas (description) VALUES (?)', [description]);
     res.status(201).json({ id: result.insertId, description, completed: false });
   } catch (error) {
-    console.error('Falha ao criar tarefa:', error);
-    res.status(500).json({ error: 'Erro interno do servidor' });
+    console.error('Não foi possível criar a tarefa:', error);
+    res.status(500).json({ message: 'Ocorreu um erro no servidor ao criar a tarefa.' });
   }
 });
 
-// Editar uma tarefa (descrição e/ou status de concluída)
-// Rota para EDITAR uma tarefa (descrição e/ou status de concluída)
+// Endpoint para ATUALIZAR uma tarefa existente (descrição e/ou status)
 app.put('/api/tasks/:id', async (req, res) => {
   const { id } = req.params;
   const { description, completed } = req.body;
 
   if (description === undefined && completed === undefined) {
-    return res.status(400).json({ error: 'Pelo menos um campo (descrição ou concluída) deve ser fornecido para atualização.' });
+    return res.status(400).json({ message: 'É necessário fornecer "description" ou "completed" para atualizar.' });
   }
 
   try {
-    // Primeiro, busca a tarefa atual para obter os valores existentes caso nem todos sejam passados
+    // Busca a tarefa atual para usar seus valores caso nem todos os campos sejam enviados na requisição.
     const [currentTaskRows] = await pool.query('SELECT * FROM tarefas WHERE id = ?', [id]);
     if (currentTaskRows.length === 0) {
-      return res.status(404).json({ error: 'Tarefa não encontrada' });
+      return res.status(404).json({ message: 'Tarefa com o ID especificado não foi encontrada.' });
     }
     const currentTask = currentTaskRows[0];
 
@@ -114,31 +112,30 @@ app.put('/api/tasks/:id', async (req, res) => {
     const newCompleted = completed !== undefined ? (completed ? 1 : 0) : currentTask.completed;
 
     await pool.query('UPDATE tarefas SET description = ?, completed = ? WHERE id = ?', [newDescription, newCompleted, id]);
-    res.json({ id: parseInt(id), description: newDescription, completed: !!newCompleted }); // Retorna boolean para o frontend
+    res.json({ id: parseInt(id), description: newDescription, completed: !!newCompleted }); // Assegura que 'completed' seja booleano na resposta.
   } catch (error) {
-    console.error('Falha ao atualizar tarefa:', error);
-    res.status(500).json({ error: 'Erro interno do servidor' });
+    console.error('Não foi possível atualizar a tarefa:', error);
+    res.status(500).json({ message: 'Ocorreu um erro no servidor ao atualizar a tarefa.' });
   }
 });
 
-// Deletar uma tarefa
-// Rota para DELETAR uma tarefa
+// Endpoint para REMOVER uma tarefa
 app.delete('/api/tasks/:id', async (req, res) => {
   const { id } = req.params;
   try {
     const [result] = await pool.query('DELETE FROM tarefas WHERE id = ?', [id]);
     if (result.affectedRows === 0) {
-      return res.status(404).json({ error: 'Tarefa não encontrada para exclusão' });
+      return res.status(404).json({ message: 'Nenhuma tarefa encontrada com este ID para exclusão.' });
     }
-    res.status(204).send(); // Resposta "Sem Conteúdo" para indicar sucesso na exclusão
+    res.status(204).send(); // HTTP 204 No Content indica sucesso na remoção.
   } catch (error) {
-    console.error('Falha ao deletar tarefa:', error);
-    res.status(500).json({ error: 'Erro interno do servidor' });
+    console.error('Não foi possível deletar a tarefa:', error);
+    res.status(500).json({ message: 'Ocorreu um erro no servidor ao deletar a tarefa.' });
   }
 });
 
 async function startServer() {
-  await initializeDatabase(); // Garante que o DB esteja pronto antes de iniciar o servidor
+  await initializeDatabase(); // Assegura a inicialização do banco de dados antes de iniciar o servidor HTTP.
   app.listen(port, () => {
     console.log(`Servidor backend iniciado e ouvindo na porta ${port}. Acesse em http://localhost:${port}`);
   });
