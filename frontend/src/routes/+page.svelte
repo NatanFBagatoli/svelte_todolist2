@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import Icon from '@iconify/svelte';
 
   interface Task {
     id: number;
@@ -18,7 +19,7 @@
 
   const API_URL: string = 'http://localhost:3001/api/tasks'; // URL do seu backend
 
-  // Função para buscar todas as tarefas
+  //busca todas as tarefas
   async function fetchTasks(): Promise<void> {
     isLoading = true;
     error = null;
@@ -30,13 +31,13 @@
       tasks = await response.json();
     } catch (e) {
       console.error('Falha ao buscar tarefas:', e);
-      error = 'Não foi possível carregar as tarefas. O backend está rodando?';
+      error = 'Não foi possível carregar as tarefas.';
     } finally {
       isLoading = false;
     }
   }
 
-  // Função para adicionar uma nova tarefa
+  //adiciona uma nova tarefa
   async function addTask(): Promise<void> {
     if (!newTaskDescription.trim()) return;
     isLoading = true;
@@ -53,7 +54,7 @@
         throw new Error(`Erro HTTP: ${response.status}`);
       }
       const addedTask: Task = await response.json();
-      tasks = [addedTask, ...tasks]; // Adiciona no início para aparecer primeiro
+      tasks = [addedTask, ...tasks]; 
       newTaskDescription = '';
     } catch (e) {
       console.error('Falha ao adicionar tarefa:', e);
@@ -63,7 +64,7 @@
     }
   }
 
-  // Função para alternar o estado de concluído de uma tarefa
+  //muda o estado de concluído de uma tarefa
   async function toggleTaskCompleted(task: Task): Promise<void> {
     isLoading = true;
     error = null;
@@ -88,13 +89,13 @@
     }
   }
 
-  // Função para iniciar a edição de uma tarefa
+  //inicia a edição de uma tarefa
   function startEditTask(task: Task): void {
     editingTaskId = task.id;
     editingTaskDescription = task.description;
   }
 
-  // Função para salvar a tarefa editada
+  //salva a tarefa editada
   async function saveEditedTask(task: Task): Promise<void> {
     if (!editingTaskDescription.trim()) return;
     isLoading = true;
@@ -121,13 +122,13 @@
     }
   }
 
-  // Função para cancelar a edição
+  //cancela a edição
   function cancelEdit(): void {
     editingTaskId = null;
     editingTaskDescription = '';
   }
 
-  // Função para deletar uma tarefa
+  //deleta uma tarefa
   async function deleteTask(taskId: number): Promise<void> {
     isLoading = true;
     error = null;
@@ -147,7 +148,7 @@
     }
   }
 
-  // Carrega as tarefas quando o componente é montado
+  //Carrega as tarefas ao montar o componente
   onMount(fetchTasks);
 </script>
 
@@ -165,7 +166,7 @@
   </form>
 
   {#if isLoading && tasks.length === 0}
-    <p>Carregando tarefas.</p>
+    <p>Carregando as tarefas.</p>
   {/if}
 
   {#if error}
@@ -176,9 +177,9 @@
     {#each tasks as task (task.id)}
       <li class:completed={task.completed}>
         {#if editingTaskId === task.id}
-          <input type="text" bind:value={editingTaskDescription} class="edit-input" />
-          <button on:click={() => saveEditedTask(task)} disabled={isLoading}>Salvar</button>
-          <button on:click={cancelEdit} disabled={isLoading}>Cancelar</button>
+          <input type="text" bind:value={editingTaskDescription} class="edit-input" aria-label="Editar descrição da tarefa" />
+          <button class="save-edit-btn" on:click={() => saveEditedTask(task)} disabled={isLoading || !editingTaskDescription.trim()}>Salvar</button>
+          <button class="cancel-edit-btn" on:click={cancelEdit} disabled={isLoading}>Cancelar</button>
         {:else}
           <input
             type="checkbox"
@@ -187,31 +188,38 @@
             aria-label="Marcar como concluída"
           />
           <span on:dblclick={() => startEditTask(task)}>{task.description}</span>
-          <button on:click={() => startEditTask(task)} disabled={isLoading} class="edit-btn">✏️</button>
-          <button on:click={() => deleteTask(task.id)} disabled={isLoading} class="delete-btn">🗑️</button>
+          <button on:click={() => startEditTask(task)} disabled={isLoading} class="edit-btn" aria-label="Editar tarefa"><Icon icon="mdi:pencil" /></button>
+          <button on:click={() => deleteTask(task.id)} disabled={isLoading} class="delete-btn" aria-label="Deletar tarefa"><Icon icon="mdi:delete-outline" /></button>
         {/if}
       </li>
     {/each}
   </ul>
 
   {#if !isLoading && tasks.length === 0 && !error}
-    <p>Nenhuma tarefa ainda. Que tal adicionar uma?</p>
+    <p>Nenhuma tarefa ainda.</p>
   {/if}
 </main>
 
 <style>
+ :global(body) {
+    background-color: var(--background-color, #791717);
+    margin: 0;
+    line-height: 1.6;
+ 
+  }
   main {
-    max-width: 700px;
+    max-width: 1000px;
     margin: 2rem auto;
     padding: 2rem;
     font-family: 'Roboto', sans-serif;
-    background-color: #ffffff;
+    background-color: #8a1b1b;
     border-radius: 12px;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 4px 10px rgb(240, 65, 65);
+    
   }
 
   h1 {
-    color: #2c3e50;
+    color: #ffffff;
     text-align: center;
     margin-bottom: 2rem;
     font-size: 2rem;
@@ -231,16 +239,18 @@
     border-radius: 8px;
     font-size: 1rem;
     transition: border-color 0.3s;
+    
   }
 
   .add-task-form input[type="text"]:focus {
-    border-color: #3498db;
+    border-color: #e25151;
     outline: none;
+    box-shadow: 0 4px 10px rgb(240, 65, 65);
   }
 
   .add-task-form button {
     padding: 1rem 1.5rem;
-    background-color: #3498db;
+    background-color: #d62626;
     color: white;
     border: none;
     border-radius: 8px;
@@ -251,12 +261,13 @@
   }
 
   .add-task-form button:disabled {
-    background-color: #bdc3c7;
+    background-color: #fc5d5d;
     cursor: not-allowed;
   }
 
   .add-task-form button:hover:not(:disabled) {
-    background-color: #2980b9;
+    background-color: #680000;
+    box-shadow: 0 4px 10px rgb(185, 2, 2);
   }
 
   .task-list {
@@ -278,12 +289,12 @@
   }
 
   .task-list li:hover {
-    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 4px 10px rgb(240, 65, 65);
   }
 
   .task-list li.completed span {
     text-decoration: line-through;
-    color: #95a5a6;
+    color: #000000;
   }
 
   .task-list li span {
@@ -295,7 +306,7 @@
   .task-list li .edit-input {
     flex-grow: 1;
     padding: 0.75rem;
-    border: 2px solid #ecf0f1;
+    border: 2px solid #e25151;
     border-radius: 8px;
     font-size: 1rem;
   }
@@ -305,24 +316,59 @@
     border: none;
     cursor: pointer;
     padding: 0.5rem;
-    font-size: 1.2rem;
-    transition: color 0.3s;
+    font-size: 1.2rem; /* Principalmente para ícones */
+    transition: color 0.3s, background-color 0.3s, border-color 0.3s;
   }
 
   .task-list li .edit-btn {
-    color: #3498db;
+    color: #038f16;
   }
 
-  .task-list li .edit-btn:hover {
-    color: #2980b9;
+  .task-list li .edit-btn:hover:not(:disabled) {
+    color: #01500c;
   }
 
   .task-list li .delete-btn {
     color: #e74c3c;
   }
+  .task-list li .delete-btn:hover:not(:disabled) {
+    color: #942519;
+  }
 
-  .task-list li .delete-btn:hover {
-    color: #c0392b;
+  /* Botões Salvar e Cancelar na edição */
+  .task-list li .save-edit-btn,
+  .task-list li .cancel-edit-btn {
+    padding: 0.6rem 1rem;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    border-width: 1.5px; /* Espessura da borda */
+    border-style: solid;
+    /* Herdam background: none inicialmente */
+  }
+
+  .task-list li .save-edit-btn {
+    color: #27ae60; /* Verde (Nephritis) */
+    border-color: #27ae60;
+  }
+  .task-list li .save-edit-btn:hover:not(:disabled) {
+    background-color: #27ae60;
+    color: white;
+  }
+
+  .task-list li .cancel-edit-btn {
+    color: #c0392b; /* Vermelho (Pomegranate) */
+    border-color: #c0392b;
+  }
+  .task-list li .cancel-edit-btn:hover:not(:disabled) {
+    background-color: #c0392b;
+    color: white;
+  }
+
+  /* Estilo para botões desabilitados na lista */
+  .task-list li button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
   }
 
   .error-message {
